@@ -293,7 +293,7 @@ router.get('/', authMiddleware, async (req, res) => {
 
       // Verificar se bitrate excede o limite
       const currentBitrate = video.bitrate_video || 0;
-      const bitrateExceedsLimit = currentBitrate > userBitrateLimit;
+      const bitrateExceedsLimit = currentBitrate > 0 && currentBitrate > userBitrateLimit;
       
       // Verificar compatibilidade de formato e codec
       const fileExtension = path.extname(video.nome).toLowerCase();
@@ -301,22 +301,25 @@ router.get('/', authMiddleware, async (req, res) => {
       const codecCompatible = isCompatibleCodec(video.codec_video) || video.codec_video === 'h264';
       const formatCompatible = isCompatibleFormat(video.formato_original, fileExtension) || fileExtension === '.mp4';
       
-      // Determinar se precisa de conversão - considerar campo compativel do banco
-      const needsConversion = video.compativel !== 'sim' && (!isMP4 || !codecCompatible || !formatCompatible);
+      // Determinar se precisa de conversão - lógica mais rigorosa
+      const needsConversion = !isMP4 || !codecCompatible || !formatCompatible || bitrateExceedsLimit;
       
       // Status de compatibilidade
       let compatibilityStatus = 'compatible';
       let compatibilityMessage = 'Compatível';
       
-      if (video.compativel === 'sim') {
+      if (video.compativel === 'otimizado' && isMP4 && codecCompatible && formatCompatible && !bitrateExceedsLimit) {
+        compatibilityStatus = 'optimized';
+        compatibilityMessage = 'Otimizado';
+      } else if (video.compativel === 'sim' && isMP4 && codecCompatible && formatCompatible && !bitrateExceedsLimit) {
         compatibilityStatus = 'compatible';
-        compatibilityMessage = 'Compatível';
-      } else if (needsConversion) {
+        compatibilityMessage = 'Otimizado';
+      } else if (bitrateExceedsLimit || !isMP4 || !codecCompatible || !formatCompatible) {
         compatibilityStatus = 'needs_conversion';
         compatibilityMessage = 'Necessário Conversão';
-      } else if (bitrateExceedsLimit) {
-        compatibilityStatus = 'bitrate_high';
-        compatibilityMessage = 'Bitrate Alto';
+      } else {
+        compatibilityStatus = 'needs_conversion';
+        compatibilityMessage = 'Necessário Conversão';
       }
       
       return {

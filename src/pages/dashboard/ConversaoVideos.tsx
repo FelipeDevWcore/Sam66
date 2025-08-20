@@ -392,9 +392,15 @@ const ConversaoVideos: React.FC = () => {
       return 'Convertendo...';
     }
 
-    // Verificar primeiro o campo compativel do banco
-    if (video.compatibility_status === 'compatible' || video.compatibility_message === 'Compatível') {
-      return 'Compatível';
+    // Verificar compatibilidade rigorosa
+    const isMP4 = video.is_mp4;
+    const codecCompatible = video.codec_video && ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase());
+    const bitrateOK = video.current_bitrate <= video.user_bitrate_limit;
+    
+    if (isMP4 && codecCompatible && bitrateOK) {
+      return 'Otimizado';
+    } else if (!isMP4 || !codecCompatible || !bitrateOK) {
+      return 'Necessário Conversão';
     }
     
     switch (video.conversion_status) {
@@ -407,10 +413,7 @@ const ConversaoVideos: React.FC = () => {
       case 'disponivel':
         return 'Disponível';
       default:
-        if (video.is_mp4 && video.can_use_current) {
-          return 'MP4 Original';
-        }
-        return video.needs_conversion ? 'Necessário Conversão' : 'Compatível';
+        return 'Necessário Conversão';
     }
   };
 
@@ -419,9 +422,15 @@ const ConversaoVideos: React.FC = () => {
       return 'text-blue-600';
     }
 
-    // Verificar primeiro o campo compativel do banco
-    if (video.compatibility_status === 'compatible' || video.compatibility_message === 'Compatível') {
+    // Verificar compatibilidade rigorosa
+    const isMP4 = video.is_mp4;
+    const codecCompatible = video.codec_video && ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase());
+    const bitrateOK = video.current_bitrate <= video.user_bitrate_limit;
+    
+    if (isMP4 && codecCompatible && bitrateOK) {
       return 'text-green-600';
+    } else if (!isMP4 || !codecCompatible || !bitrateOK) {
+      return 'text-red-600';
     }
     
     switch (video.conversion_status) {
@@ -434,10 +443,7 @@ const ConversaoVideos: React.FC = () => {
       case 'disponivel':
         return 'text-green-600';
       default:
-        if (video.is_mp4 && video.can_use_current) {
-          return 'text-green-600';
-        }
-        return video.needs_conversion ? 'text-red-600' : 'text-green-600';
+        return 'text-red-600';
     }
   };
 

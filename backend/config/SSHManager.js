@@ -178,14 +178,44 @@ class SSHManager {
         }
     }
 
+    // Criar diretório do usuário no Wowza
+    async createWowzaUserDirectory(serverId, userLogin) {
+        try {
+            const wowzaUserDir = `/usr/local/WowzaStreamingEngine/content/${userLogin}`;
+            const commands = [
+                `mkdir -p ${wowzaUserDir}`,
+                `chown -R streaming:streaming ${wowzaUserDir}`,
+                `chmod -R 755 ${wowzaUserDir}`
+            ];
+
+            for (const command of commands) {
+                await this.executeCommand(serverId, command);
+            }
+
+            console.log(`✅ Diretório Wowza criado para usuário ${userLogin}: ${wowzaUserDir}`);
+            return { success: true, wowzaUserDir };
+        } catch (error) {
+            console.error(`Erro ao criar diretório Wowza para usuário ${userLogin}:`, error);
+            throw error;
+        }
+    }
+
     async createUserFolder(serverId, userLogin, folderName) {
         try {
-            // Estrutura correta: /home/streaming/[usuario]/[pasta]
+            // Criar pasta na estrutura de streaming
             const folderPath = `/home/streaming/${userLogin}/${folderName}`;
+            // Criar pasta na estrutura do Wowza
+            const wowzaFolderPath = `/usr/local/WowzaStreamingEngine/content/${userLogin}/${folderName}`;
+            
             const commands = [
+                // Streaming
                 `mkdir -p ${folderPath}`,
                 `chown -R streaming:streaming ${folderPath}`,
-                `chmod -R 755 ${folderPath}`
+                `chmod -R 755 ${folderPath}`,
+                // Wowza
+                `mkdir -p ${wowzaFolderPath}`,
+                `chown -R streaming:streaming ${wowzaFolderPath}`,
+                `chmod -R 755 ${wowzaFolderPath}`
             ];
 
             for (const command of commands) {
@@ -193,7 +223,8 @@ class SSHManager {
             }
 
             console.log(`✅ Pasta ${folderName} criada para usuário ${userLogin}`);
-            console.log(`📁 Caminho completo: ${folderPath}`);
+            console.log(`📁 Caminho streaming: ${folderPath}`);
+            console.log(`📁 Caminho Wowza: ${wowzaFolderPath}`);
             return { success: true, folderPath };
         } catch (error) {
             console.error(`Erro ao criar pasta ${folderName}:`, error);
@@ -206,8 +237,11 @@ class SSHManager {
         try {
             console.log(`🏗️ Criando estrutura completa para usuário: ${userLogin}`);
 
-            // Criar apenas estrutura básica de streaming
+            // Criar estrutura de streaming
             await this.createUserDirectory(serverId, userLogin);
+            
+            // Criar estrutura do Wowza
+            await this.createWowzaUserDirectory(serverId, userLogin);
 
             console.log(`✅ Estrutura completa criada para ${userLogin}`);
             return { success: true };
