@@ -392,15 +392,9 @@ const ConversaoVideos: React.FC = () => {
       return 'Convertendo...';
     }
 
-    // Verificar compatibilidade rigorosa
-    const isMP4 = video.is_mp4;
-    const codecCompatible = video.codec_video && ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase());
-    const bitrateOK = video.current_bitrate <= video.user_bitrate_limit;
-    
-    if (isMP4 && codecCompatible && bitrateOK) {
-      return 'Otimizado';
-    } else if (!isMP4 || !codecCompatible || !bitrateOK) {
-      return 'Necessário Conversão';
+    // Verificar primeiro o campo compativel do banco
+    if (video.compatibility_status === 'compatible' || video.compatibility_message === 'Compatível') {
+      return 'Compatível';
     }
     
     switch (video.conversion_status) {
@@ -413,7 +407,10 @@ const ConversaoVideos: React.FC = () => {
       case 'disponivel':
         return 'Disponível';
       default:
-        return 'Necessário Conversão';
+        if (video.is_mp4 && video.can_use_current) {
+          return 'MP4 Original';
+        }
+        return video.needs_conversion ? 'Necessário Conversão' : 'Compatível';
     }
   };
 
@@ -422,15 +419,9 @@ const ConversaoVideos: React.FC = () => {
       return 'text-blue-600';
     }
 
-    // Verificar compatibilidade rigorosa
-    const isMP4 = video.is_mp4;
-    const codecCompatible = video.codec_video && ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase());
-    const bitrateOK = video.current_bitrate <= video.user_bitrate_limit;
-    
-    if (isMP4 && codecCompatible && bitrateOK) {
+    // Verificar primeiro o campo compativel do banco
+    if (video.compatibility_status === 'compatible' || video.compatibility_message === 'Compatível') {
       return 'text-green-600';
-    } else if (!isMP4 || !codecCompatible || !bitrateOK) {
-      return 'text-red-600';
     }
     
     switch (video.conversion_status) {
@@ -443,7 +434,10 @@ const ConversaoVideos: React.FC = () => {
       case 'disponivel':
         return 'text-green-600';
       default:
-        return 'text-red-600';
+        if (video.is_mp4 && video.can_use_current) {
+          return 'text-green-600';
+        }
+        return video.needs_conversion ? 'text-red-600' : 'text-green-600';
     }
   };
 
@@ -613,10 +607,10 @@ const ConversaoVideos: React.FC = () => {
 
                     <td className="py-3 px-4 text-center">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${video.is_mp4 && video.compatibility_status !== 'needs_conversion' ?
-                        'bg-green-100 text-green-800' :
-                        video.compatibility_status === 'needs_conversion' ?
-                          'bg-red-100 text-red-800' :
-                          'bg-yellow-100 text-yellow-800'
+                        video.current_bitrate <= video.user_bitrate_limit && 
+                        video.codec_video && ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase()) ?
+                          'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' :
+                        'bg-red-100 text-red-800'
                         }`}>
                         {video.formato_original?.toUpperCase() || 'N/A'}
                         {video.codec_video && ` (${video.codec_video.toUpperCase()})`}
@@ -648,7 +642,10 @@ const ConversaoVideos: React.FC = () => {
                           <span className={`text-sm font-medium ${getStatusColor(video)}`}>
                             {getStatusText(video)}
                           </span>
-                          {video.compatibility_status === 'needs_conversion' && (
+                          {(!video.is_mp4 || 
+                            !video.codec_video || 
+                            !['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase()) ||
+                            (video.current_bitrate > video.user_bitrate_limit)) && (
                             <span className="text-xs text-red-600 font-medium">
                               Necessário Conversão
                             </span>

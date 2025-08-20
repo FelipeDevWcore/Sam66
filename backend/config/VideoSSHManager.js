@@ -52,8 +52,8 @@ class VideoSSHManager {
 
     async listVideosFromServer(serverId, userLogin, folderName = null) {
         try {
-            // Nova estrutura: /home/streaming/[usuario]
-            const basePath = `/home/streaming/${userLogin}`;
+            // Estrutura do Wowza: /usr/local/WowzaStreamingEngine/content/[usuario]
+            const basePath = `/usr/local/WowzaStreamingEngine/content/${userLogin}`;
             const searchPath = folderName ? `${basePath}/${folderName}` : basePath;
             
             // Comando para listar apenas arquivos de vídeo recursivamente
@@ -78,7 +78,7 @@ class VideoSSHManager {
                 const size = parseInt(parts[4]) || 0;
                 const fullPath = parts.slice(8).join(' ');
                 const fileName = path.basename(fullPath);
-                const relativePath = fullPath.replace(`/home/streaming/`, '');
+                const relativePath = fullPath.replace(`/usr/local/WowzaStreamingEngine/content/`, '');
                 const folderPath = path.dirname(relativePath);
                 const fileExtension = path.extname(fileName).toLowerCase();
                 
@@ -86,6 +86,7 @@ class VideoSSHManager {
                 let duration = 0;
                 let videoBitrate = 0;
                 let videoFormat = fileExtension.substring(1);
+                let codecVideo = 'unknown';
                 try {
                     const probeCommand = `ffprobe -v quiet -print_format json -show_format -show_streams "${fullPath}" 2>/dev/null || echo "NO_PROBE"`;
                     const probeResult = await SSHManager.executeCommand(serverId, probeCommand);
@@ -102,6 +103,7 @@ class VideoSSHManager {
                             const videoStream = probeData.streams.find(s => s.codec_type === 'video');
                             if (videoStream && videoStream.codec_name) {
                                 videoFormat = videoStream.codec_name;
+                                codecVideo = videoStream.codec_name;
                                 // Se não conseguiu bitrate do format, tentar do stream de vídeo
                                 if (!videoBitrate && videoStream.bit_rate) {
                                     videoBitrate = Math.floor(parseInt(videoStream.bit_rate) / 1000) || 0;
@@ -115,8 +117,10 @@ class VideoSSHManager {
 
                 // Verificar se é MP4 e se bitrate está dentro do limite
                 const isMP4 = fileExtension === '.mp4';
-                const userBitrateLimit = 2500; // Será obtido do contexto do usuário
-                const needsConversion = !isMP4 || (videoBitrate > 0 && videoBitrate > userBitrateLimit);
+                const userBitrateLimit = req?.user?.bitrate || 2500;
+                const codecCompatible = codecVideo && ['h264', 'h265', 'hevc', 'x264'].includes(codecVideo.toLowerCase());
+                const bitrateExceedsLimit = videoBitrate > 0 && videoBitrate > userBitrateLimit;
+                const needsConversion = !isMP4 || !codecCompatible || bitrateExceedsLimit;
                 
                 // Nome do arquivo MP4 (sempre MP4 após conversão)
                 const mp4FileName = fileName.replace(/\.[^/.]+$/, '.mp4');
@@ -134,7 +138,7 @@ class VideoSSHManager {
                     bitrate_video: videoBitrate,
                     bitrate_original: videoBitrate, // Bitrate original do arquivo
                     formato_original: videoFormat,
-                    can_use: !needsConversion,
+                    can_use: isMP4 && codecCompatible && !bitrateExceedsLimit,
                     folder: folderPath.replace(`${userLogin}/`, '') || 'root',
                     size: size,
                     duration: duration,
@@ -144,14 +148,17 @@ class VideoSSHManager {
                     userLogin: userLogin,
                     mp4Url: `/content/${relativePath.replace(fileName, mp4FileName)}`,
                     originalFormat: fileExtension,
-                    user_bitrate_limit: userBitrateLimit
+                    user_bitrate_limit: userBitrateLimit,
+                    codec_video: codecVideo,
+                    codec_compatible: codecCompatible,
+                    bitrate_exceeds_limit: bitrateExceedsLimit
                 });
             }
 
             console.log(`📹 Encontrados ${videos.length} vídeos no servidor para ${userLogin}`);
             
             // Sincronizar com banco de dados
-            await this.syncVideosWithDatabase(videos, userLogin, serverId);
+            await this.syncVideosWithDatabase(videos, userLogin, serverId, req?.user?.id);
             
             return videos;
             
@@ -161,7 +168,7 @@ class VideoSSHManager {
         }
     }
 
-    async syncVideosWithDatabase(videos, userLogin, serverId) {
+    async syncVideosWithDatabase(videos, userLogin, serverId, userId = null) {
         try {
             const db = require('./database');
             
@@ -178,8 +185,10 @@ class VideoSSHManager {
                     if (existingRows.length === 0) {
                         // Buscar código do cliente baseado no userLogin
                         const [clienteRows] = await db.execute(
-                            'SELECT codigo_cliente FROM streamings WHERE usuario = ? OR email LIKE ? LIMIT 1',
-                            [userLogin, `${userLogin}@%`]
+                            userId ? 
+                              'SELECT codigo_cliente FROM streamings WHERE codigo_cliente = ? LIMIT 1' :
+                              'SELECT codigo_cliente FROM streamings WHERE usuario = ? OR email LIKE ? LIMIT 1',
+                            userId ? [userId] : [userLogin, `${userLogin}@%`]
                         );
                         
                         const codigoCliente = clienteRows.length > 0 ? clienteRows[0].codigo_cliente : null;
@@ -194,10 +203,11 @@ class VideoSSHManager {
                         
                         // Inserir novo vídeo na tabela videos
                         const duracao = this.formatDuration(video.duration);
-                        const relativePath = video.path.replace('/home/streaming/', ''); // Garantir formato correto
+                        const relativePath = video.path; // Já está no formato correto
                         
-                        // Verificar se é MP4 e codec compatível para determinar compatibilidade
-                        const isCompatible = video.is_mp4 && (video.formato_original === 'h264' || video.formato_original === 'mp4');
+                        // Verificar compatibilidade rigorosa
+                        const isCompatible = video.is_mp4 && video.codec_compatible && !video.bitrate_exceeds_limit;
+                        const compatibilityStatus = isCompatible ? 'otimizado' : 'nao';
                         
                         await db.execute(
                             `INSERT INTO videos (
@@ -216,8 +226,8 @@ class VideoSSHManager {
                                 video.bitrate_video || 0,
                                 video.formato_original || 'unknown',
                                 video.is_mp4 ? 1 : 0,
-                                isCompatible ? 'sim' : 'nao',
-                                video.formato_original || 'unknown'
+                                compatibilityStatus,
+                                video.codec_video || 'unknown'
                             ]
                         );
                         
@@ -225,8 +235,15 @@ class VideoSSHManager {
                     } else {
                         // Atualizar informações se necessário
                         await db.execute(
-                            'UPDATE videos SET tamanho_arquivo = ?, duracao = ?, codec_video = ?, formato_original = ? WHERE caminho = ?',
-                            [video.size, video.duration, video.formato_original || 'unknown', video.formato_original || 'unknown', video.fullPath]
+                            'UPDATE videos SET tamanho_arquivo = ?, duracao = ?, codec_video = ?, formato_original = ?, compativel = ? WHERE caminho = ?',
+                            [
+                              video.size, 
+                              video.duration, 
+                              video.codec_video || 'unknown', 
+                              video.formato_original || 'unknown',
+                              video.is_mp4 && video.codec_compatible && !video.bitrate_exceeds_limit ? 'otimizado' : 'nao',
+                              video.fullPath
+                            ]
                         );
                     }
                 } catch (videoError) {

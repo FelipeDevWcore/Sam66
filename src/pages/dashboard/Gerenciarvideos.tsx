@@ -765,19 +765,26 @@ const GerenciarVideos: React.FC = () => {
 
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center space-x-1">
-                          {video.compatibility_status === 'compatible' ? (
+                          {video.is_mp4 && 
+                           video.codec_video && 
+                           ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase()) &&
+                           (!video.bitrate_video || video.bitrate_video <= (video.user_bitrate_limit || 2500)) ? (
                             <CheckCircle className="h-4 w-4 text-green-600" />
-                          ) : video.compatibility_status === 'needs_conversion' ? (
-                            <AlertCircle className="h-4 w-4 text-red-600" />
                           ) : (
-                            <AlertCircle className="h-4 w-4 text-yellow-600" />
+                            <AlertCircle className="h-4 w-4 text-red-600" />
                           )}
                           <span className={`text-xs font-medium ${
-                            video.compatibility_status === 'compatible' ? 'text-green-600' :
-                            video.compatibility_status === 'needs_conversion' ? 'text-red-600' :
-                            'text-yellow-600'
+                            video.is_mp4 && 
+                            video.codec_video && 
+                            ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase()) &&
+                            (!video.bitrate_video || video.bitrate_video <= (video.user_bitrate_limit || 2500)) ? 
+                              'text-green-600' : 'text-red-600'
                             }`}>
-                            {video.compatibility_message || 'Verificando...'}
+                            {video.is_mp4 && 
+                             video.codec_video && 
+                             ['h264', 'h265', 'hevc', 'x264'].includes(video.codec_video.toLowerCase()) &&
+                             (!video.bitrate_video || video.bitrate_video <= (video.user_bitrate_limit || 2500)) ? 
+                               'Otimizado' : 'Necessário Conversão'}
                           </span>
                         </div>
                       </td>

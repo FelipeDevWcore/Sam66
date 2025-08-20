@@ -753,7 +753,7 @@ router.post('/sync-database', authMiddleware, async (req, res) => {
             folderId,
             video.bitrate_video || 0,
             video.formato_original || 'unknown',
-            video.is_mp4 ? 1 : 0
+            video.is_mp4 ? 1 : 0,
           ]
         );
         

@@ -124,13 +124,28 @@ class VideoURLBuilder {
                 (userRows[0].usuario || userRows[0].email?.split('@')[0] || `user_${userId}`) :
                 `user_${userId}`;
 
-            // Construir URL
-            return await this.buildVideoViewUrl(
-                userLogin, 
-                video.folder_name || 'default', 
-                video.nome, 
-                serverId
-            );
+            // Construir URL usando caminho do Wowza
+            let videoPath = video.caminho;
+            
+            // Se o caminho não contém a estrutura do Wowza, construir
+            if (!videoPath.includes('/usr/local/WowzaStreamingEngine/content/')) {
+                videoPath = `/usr/local/WowzaStreamingEngine/content/${video.url || `${userLogin}/${video.folder_name || 'default'}/${video.nome}`}`;
+            }
+            
+            // Extrair caminho relativo para construir URL
+            const relativePath = videoPath.replace('/usr/local/WowzaStreamingEngine/content/', '');
+            const pathParts = relativePath.split('/');
+            
+            if (pathParts.length >= 3) {
+                const userPath = pathParts[0];
+                const folderName = pathParts[1];
+                const fileName = pathParts[2];
+                
+                return await this.buildVideoViewUrl(userPath, folderName, fileName, serverId);
+            }
+            
+            // Fallback
+            return await this.buildVideoViewUrl(userLogin, video.folder_name || 'default', video.nome, serverId);
         } catch (error) {
             console.error('Erro ao construir URL do banco:', error);
             return null;
